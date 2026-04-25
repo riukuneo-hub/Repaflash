@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Generador de Mensajes</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: #f5f7fa;
+    }
+    .box {
+      max-width: 400px;
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+    input, button {
+      width: 100%;
+      margin-top: 10px;
+      padding: 10px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+    button {
+      background: #2b7cff;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    textarea {
+      width: 100%;
+      height: 200px;
+      margin-top: 15px;
+      padding: 10px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="box">
+  <h3>Generar mensaje</h3>
+
+  <input type="text" id="nombre" placeholder="Nombre del repartidor">
+  <input type="text" id="restaurante" placeholder="Nombre del restaurante">
+  <input type="number" id="total" placeholder="Total a pagar">
+
+  <button onclick="generar()">Generar y copiar</button>
+
+  <textarea id="resultado" readonly></textarea>
+</div>
+
+<script>
+function generar() {
+  const nombre = document.getElementById("nombre").value;
+  const restaurante = document.getElementById("restaurante").value;
+  const total = document.getElementById("total").value;
+
+  if (!nombre || !restaurante || !total) {
+    alert("Completa todos los campos");
+    return;
+  }
+
+  const mensaje = `👉https://www.repaflash-delivery.com/menu
+
+¡Excelente día! 🍀💯
+
+👋 ¡Hola! Mi nombre es ${nombre}
+🛵 voy en camino con tu pedido de 
+🏪 ${restaurante}
+💵 Total: $ ${Number(total).toFixed(2)}
+📍 ¿Me compartes tu ubicación para llegar sin enredo? 😉
+
+✨ Si deseas dejar propina al repartidor de REPAFLASH, puedes hacerlo en efectivo.
+Nuestros repartidores son servicio externo al restaurante. 💯🛵`;
+
+  // Mostrar en textarea
+  document.getElementById("resultado").value = mensaje;
+
+  // Copiar automáticamente
+  navigator.clipboard.writeText(mensaje)
+    .then(() => alert("Mensaje copiado ✅"))
+    .catch(() => alert("No se pudo copiar"));
+}
+</script>
+
+</body>
+</html>
