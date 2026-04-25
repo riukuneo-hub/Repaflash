@@ -2,173 +2,150 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Analizador de pedidos</title>
+<title>Analizador PRO</title>
 
 <style>
 body { font-family: Arial; background:#f5f7fa; padding:20px; }
-.box { background:white; padding:20px; border-radius:10px; max-width:1100px; margin:auto; }
+.box { background:white; padding:20px; border-radius:10px; max-width:1200px; margin:auto; }
 input, button { padding:10px; margin-top:10px; width:100%; }
 table { width:100%; margin-top:20px; border-collapse: collapse; }
-td, th { border:1px solid #ddd; padding:8px; font-size:12px; }
+td, th { border:1px solid #ddd; padding:6px; font-size:12px; }
 tr:hover { background:#f1f1f1; cursor:pointer; }
-h3 { margin-top:25px; }
 </style>
 </head>
 
 <body>
 
 <div class="box">
-  <h2>📊 Analizador de pedidos</h2>
+<h2>⚡ Analizador rápido</h2>
 
-  <input type="file" id="fileInput">
-  <input type="text" id="fechaFiltro" placeholder="Filtrar por fecha (ej: 9/4/2026)">
-  <button onclick="procesar()">Procesar</button>
+<input type="file" id="fileInput">
 
-  <h3>📈 Usuarios</h3>
-  <table id="tablaUsuarios">
-    <thead>
-      <tr>
-        <th>Usuario</th>
-        <th>Mensajes</th>
-        <th>% del día</th>
-        <th>Horarios</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+<input type="text" id="busqFecha" placeholder="Fecha (ej: 9/4/2026)">
+<input type="text" id="busqUsuario" placeholder="Usuario / tienda">
+<input type="text" id="busqTexto" placeholder="Buscar número, $, colonia, etc">
 
-  <h3>📨 Mensajes del usuario seleccionado</h3>
-  <table id="tablaDetalle">
-    <thead>
-      <tr>
-        <th>Fecha</th>
-        <th>Hora</th>
-        <th>Mensaje</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+<button onclick="buscar()">🔎 Buscar</button>
 
-  <h3>📋 Todos los mensajes (limitado)</h3>
-  <table id="tabla">
-    <thead>
-      <tr>
-        <th>Fecha</th>
-        <th>Hora</th>
-        <th>Usuario</th>
-        <th>Mensaje</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+<h3>📊 Usuarios</h3>
+<table id="tablaUsuarios">
+<thead><tr><th>Usuario</th><th>Mensajes</th><th>%</th></tr></thead>
+<tbody></tbody>
+</table>
+
+<h3>📨 Detalle</h3>
+<table id="tablaDetalle">
+<thead><tr><th>Fecha</th><th>Hora</th><th>Mensaje</th></tr></thead>
+<tbody></tbody>
+</table>
+
+<h3>📋 Resultados</h3>
+<table id="tabla">
+<thead><tr><th>Fecha</th><th>Hora</th><th>Usuario</th><th>Mensaje</th></tr></thead>
+<tbody></tbody>
+</table>
+
 </div>
 
 <script>
 let mensajes = [];
+let IDX = { usuario:new Map(), fecha:new Map(), token:new Map() };
 
-// ================= PARSER =================
-function parsearChat(texto) {
+// ===== PARSER =====
+function parsear(texto){
   const lineas = texto.split("\n");
   const regex = /^(\d{1,2}\/\d{1,2}\/\d{4}),\s(.+?)\s-\s(.+?):\s(.+)$/;
+  const data = [];
 
-  const datos = [];
-
-  for (let linea of lineas) {
-    const match = linea.match(regex);
-    if (match) {
-      const [, fecha, hora, usuario, mensaje] = match;
-      datos.push({ fecha, hora, usuario, mensaje });
+  for (let l of lineas){
+    const m = l.match(regex);
+    if(m){
+      const [,fecha,hora,usuario,mensaje]=m;
+      data.push({fecha,hora,usuario,mensaje});
     }
   }
-
-  return datos;
+  return data;
 }
 
-// ================= ANALISIS =================
-function analizarActividad(mensajes, fechaFiltro) {
-  const filtrados = fechaFiltro 
-    ? mensajes.filter(m => m.fecha === fechaFiltro)
-    : mensajes;
-
-  const totalDia = filtrados.length;
-
-  const usuarios = {};
-
-  filtrados.forEach(m => {
-    if (!usuarios[m.usuario]) {
-      usuarios[m.usuario] = { total: 0, horas: [] };
-    }
-
-    usuarios[m.usuario].total++;
-    usuarios[m.usuario].horas.push(m.hora);
-  });
-
-  Object.keys(usuarios).forEach(u => {
-    usuarios[u].porcentaje = totalDia > 0 
-      ? ((usuarios[u].total / totalDia) * 100).toFixed(2)
-      : 0;
-  });
-
-  return { totalDia, usuarios, filtrados };
+// ===== NORMALIZAR =====
+function norm(t){
+  return t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
 }
 
-// ================= RENDER USUARIOS =================
-function renderUsuarios(data) {
-  const tbody = document.querySelector("#tablaUsuarios tbody");
-  tbody.innerHTML = "";
+// ===== TOKEN =====
+function tokens(t){
+  return norm(t).split(/[^a-z0-9$]+/).filter(x=>x.length>1);
+}
 
-  Object.entries(data.usuarios)
-    .sort((a,b) => b[1].total - a[1].total)
-    .forEach(([usuario, info]) => {
+// ===== INDEXAR =====
+function indexar(){
+  IDX.usuario.clear();
+  IDX.fecha.clear();
+  IDX.token.clear();
 
-      const row = document.createElement("tr");
+  mensajes.forEach((m,i)=>{
 
-      row.innerHTML = `
-        <td>${usuario}</td>
-        <td>${info.total}</td>
-        <td>${info.porcentaje}%</td>
-        <td>${info.horas.slice(0,5).join(", ")}...</td>
-      `;
+    // usuario
+    if(!IDX.usuario.has(m.usuario)) IDX.usuario.set(m.usuario,[]);
+    IDX.usuario.get(m.usuario).push(i);
 
-      row.onclick = () => {
-        mostrarMensajesUsuario(usuario, data.filtrados);
-      };
+    // fecha
+    if(!IDX.fecha.has(m.fecha)) IDX.fecha.set(m.fecha,[]);
+    IDX.fecha.get(m.fecha).push(i);
 
-      tbody.appendChild(row);
+    // tokens
+    new Set([...tokens(m.mensaje),...tokens(m.usuario)]).forEach(t=>{
+      if(!IDX.token.has(t)) IDX.token.set(t,[]);
+      IDX.token.get(t).push(i);
     });
-}
-
-// ================= DETALLE USUARIO =================
-function mostrarMensajesUsuario(usuario, mensajes) {
-  const tbody = document.querySelector("#tablaDetalle tbody");
-  tbody.innerHTML = "";
-
-  const filtrados = mensajes.filter(m => m.usuario === usuario);
-
-  const limite = 300;
-
-  let html = "";
-  filtrados.slice(0, limite).forEach(m => {
-    html += `<tr>
-      <td>${m.fecha}</td>
-      <td>${m.hora}</td>
-      <td>${m.mensaje}</td>
-    </tr>`;
   });
-
-  tbody.innerHTML = html;
 }
 
-// ================= TABLA GENERAL =================
-function renderTabla(data) {
-  const tbody = document.querySelector("#tabla tbody");
-  tbody.innerHTML = "";
+// ===== INTERSECCION =====
+function intersect(a,b){
+  const s = new Set(b);
+  return a.filter(x=>s.has(x));
+}
 
-  const limite = 300;
+// ===== BUSCAR =====
+function buscar(){
+  const f = document.getElementById("busqFecha").value.trim();
+  const u = document.getElementById("busqUsuario").value.trim();
+  const t = document.getElementById("busqTexto").value.trim();
 
-  let html = "";
-  data.slice(0, limite).forEach(m => {
-    html += `<tr>
+  let res = null;
+
+  if(u && IDX.usuario.has(u)) res=[...IDX.usuario.get(u)];
+  if(f && IDX.fecha.has(f)){
+    const arr=IDX.fecha.get(f);
+    res = res?intersect(res,arr):[...arr];
+  }
+
+  if(t){
+    tokens(t).forEach(tok=>{
+      if(IDX.token.has(tok)){
+        const arr=IDX.token.get(tok);
+        res = res?intersect(res,arr):[...arr];
+      }else res=[];
+    });
+  }
+
+  if(!res) res = mensajes.map((_,i)=>i);
+
+  const final = res.map(i=>mensajes[i]);
+
+  renderTabla(final);
+  renderUsuarios(final);
+}
+
+// ===== TABLA =====
+function renderTabla(data){
+  const tbody=document.querySelector("#tabla tbody");
+  tbody.innerHTML="";
+
+  let html="";
+  data.slice(0,300).forEach(m=>{
+    html+=`<tr>
       <td>${m.fecha}</td>
       <td>${m.hora}</td>
       <td>${m.usuario}</td>
@@ -176,32 +153,68 @@ function renderTabla(data) {
     </tr>`;
   });
 
-  tbody.innerHTML = html;
+  tbody.innerHTML=html;
 }
 
-// ================= MAIN =================
-function procesar() {
-  const file = document.getElementById("fileInput").files[0];
-  const fechaFiltro = document.getElementById("fechaFiltro").value;
+// ===== USUARIOS =====
+function renderUsuarios(data){
+  const tbody=document.querySelector("#tablaUsuarios tbody");
+  tbody.innerHTML="";
 
-  if (!file) {
-    alert("Sube un archivo");
-    return;
-  }
+  const map={};
 
-  const reader = new FileReader();
+  data.forEach(m=>{
+    map[m.usuario]=(map[m.usuario]||0)+1;
+  });
 
-  reader.onload = function(e) {
-    mensajes = parsearChat(e.target.result);
+  const total=data.length;
 
-    const analisis = analizarActividad(mensajes, fechaFiltro);
+  Object.entries(map)
+    .sort((a,b)=>b[1]-a[1])
+    .forEach(([u,c])=>{
+      const row=document.createElement("tr");
+      row.innerHTML=`
+        <td>${u}</td>
+        <td>${c}</td>
+        <td>${((c/total)*100).toFixed(2)}%</td>
+      `;
+      row.onclick=()=>detalle(u,data);
+      tbody.appendChild(row);
+    });
+}
 
-    renderUsuarios(analisis);
-    renderTabla(analisis.filtrados);
+// ===== DETALLE =====
+function detalle(usuario,data){
+  const tbody=document.querySelector("#tablaDetalle tbody");
+  tbody.innerHTML="";
+
+  let html="";
+  data.filter(m=>m.usuario===usuario).slice(0,300).forEach(m=>{
+    html+=`<tr>
+      <td>${m.fecha}</td>
+      <td>${m.hora}</td>
+      <td>${m.mensaje}</td>
+    </tr>`;
+  });
+
+  tbody.innerHTML=html;
+}
+
+// ===== CARGA =====
+document.getElementById("fileInput").addEventListener("change",function(e){
+  const file=e.target.files[0];
+  const reader=new FileReader();
+
+  reader.onload=function(ev){
+    mensajes=parsear(ev.target.result);
+    indexar();
+
+    renderTabla(mensajes);
+    renderUsuarios(mensajes);
   };
 
   reader.readAsText(file);
-}
+});
 </script>
 
 </body>
