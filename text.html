@@ -6,10 +6,12 @@
 
 <style>
 body { font-family: Arial; background:#f5f7fa; padding:20px; }
-.box { background:white; padding:20px; border-radius:10px; max-width:900px; margin:auto; }
+.box { background:white; padding:20px; border-radius:10px; max-width:1100px; margin:auto; }
 input, button { padding:10px; margin-top:10px; width:100%; }
 table { width:100%; margin-top:20px; border-collapse: collapse; }
 td, th { border:1px solid #ddd; padding:8px; font-size:12px; }
+tr:hover { background:#f1f1f1; cursor:pointer; }
+h3 { margin-top:25px; }
 </style>
 </head>
 
@@ -22,10 +24,32 @@ td, th { border:1px solid #ddd; padding:8px; font-size:12px; }
   <input type="text" id="fechaFiltro" placeholder="Filtrar por fecha (ej: 9/4/2026)">
   <button onclick="procesar()">Procesar</button>
 
-  <h3>📈 Conteo por usuario</h3>
-  <pre id="conteo"></pre>
+  <h3>📈 Usuarios</h3>
+  <table id="tablaUsuarios">
+    <thead>
+      <tr>
+        <th>Usuario</th>
+        <th>Mensajes</th>
+        <th>% del día</th>
+        <th>Horarios</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 
-  <h3>📋 Mensajes</h3>
+  <h3>📨 Mensajes del usuario seleccionado</h3>
+  <table id="tablaDetalle">
+    <thead>
+      <tr>
+        <th>Fecha</th>
+        <th>Hora</th>
+        <th>Mensaje</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <h3>📋 Todos los mensajes (limitado)</h3>
   <table id="tabla">
     <thead>
       <tr>
@@ -42,6 +66,7 @@ td, th { border:1px solid #ddd; padding:8px; font-size:12px; }
 <script>
 let mensajes = [];
 
+// ================= PARSER =================
 function parsearChat(texto) {
   const lineas = texto.split("\n");
   const regex = /^(\d{1,2}\/\d{1,2}\/\d{4}),\s(.+?)\s-\s(.+?):\s(.+)$/;
@@ -55,32 +80,106 @@ function parsearChat(texto) {
       datos.push({ fecha, hora, usuario, mensaje });
     }
   }
+
   return datos;
 }
 
-function contarPorUsuario(data) {
-  const conteo = {};
-  data.forEach(m => {
-    conteo[m.usuario] = (conteo[m.usuario] || 0) + 1;
+// ================= ANALISIS =================
+function analizarActividad(mensajes, fechaFiltro) {
+  const filtrados = fechaFiltro 
+    ? mensajes.filter(m => m.fecha === fechaFiltro)
+    : mensajes;
+
+  const totalDia = filtrados.length;
+
+  const usuarios = {};
+
+  filtrados.forEach(m => {
+    if (!usuarios[m.usuario]) {
+      usuarios[m.usuario] = { total: 0, horas: [] };
+    }
+
+    usuarios[m.usuario].total++;
+    usuarios[m.usuario].horas.push(m.hora);
   });
-  return conteo;
+
+  Object.keys(usuarios).forEach(u => {
+    usuarios[u].porcentaje = totalDia > 0 
+      ? ((usuarios[u].total / totalDia) * 100).toFixed(2)
+      : 0;
+  });
+
+  return { totalDia, usuarios, filtrados };
 }
 
+// ================= RENDER USUARIOS =================
+function renderUsuarios(data) {
+  const tbody = document.querySelector("#tablaUsuarios tbody");
+  tbody.innerHTML = "";
+
+  Object.entries(data.usuarios)
+    .sort((a,b) => b[1].total - a[1].total)
+    .forEach(([usuario, info]) => {
+
+      const row = document.createElement("tr");
+
+      row.innerHTML = `
+        <td>${usuario}</td>
+        <td>${info.total}</td>
+        <td>${info.porcentaje}%</td>
+        <td>${info.horas.slice(0,5).join(", ")}...</td>
+      `;
+
+      row.onclick = () => {
+        mostrarMensajesUsuario(usuario, data.filtrados);
+      };
+
+      tbody.appendChild(row);
+    });
+}
+
+// ================= DETALLE USUARIO =================
+function mostrarMensajesUsuario(usuario, mensajes) {
+  const tbody = document.querySelector("#tablaDetalle tbody");
+  tbody.innerHTML = "";
+
+  const filtrados = mensajes.filter(m => m.usuario === usuario);
+
+  const limite = 300;
+
+  let html = "";
+  filtrados.slice(0, limite).forEach(m => {
+    html += `<tr>
+      <td>${m.fecha}</td>
+      <td>${m.hora}</td>
+      <td>${m.mensaje}</td>
+    </tr>`;
+  });
+
+  tbody.innerHTML = html;
+}
+
+// ================= TABLA GENERAL =================
 function renderTabla(data) {
   const tbody = document.querySelector("#tabla tbody");
   tbody.innerHTML = "";
 
-  data.forEach(m => {
-    const row = `<tr>
+  const limite = 300;
+
+  let html = "";
+  data.slice(0, limite).forEach(m => {
+    html += `<tr>
       <td>${m.fecha}</td>
       <td>${m.hora}</td>
       <td>${m.usuario}</td>
       <td>${m.mensaje}</td>
     </tr>`;
-    tbody.innerHTML += row;
   });
+
+  tbody.innerHTML = html;
 }
 
+// ================= MAIN =================
 function procesar() {
   const file = document.getElementById("fileInput").files[0];
   const fechaFiltro = document.getElementById("fechaFiltro").value;
@@ -95,17 +194,10 @@ function procesar() {
   reader.onload = function(e) {
     mensajes = parsearChat(e.target.result);
 
-    let filtrados = mensajes;
+    const analisis = analizarActividad(mensajes, fechaFiltro);
 
-    if (fechaFiltro) {
-      filtrados = mensajes.filter(m => m.fecha === fechaFiltro);
-    }
-
-    const conteo = contarPorUsuario(filtrados);
-
-    document.getElementById("conteo").textContent = JSON.stringify(conteo, null, 2);
-
-    renderTabla(filtrados);
+    renderUsuarios(analisis);
+    renderTabla(analisis.filtrados);
   };
 
   reader.readAsText(file);
