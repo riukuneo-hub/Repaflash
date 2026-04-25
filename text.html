@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Analizador de pedidos</title>
+
+<style>
+body { font-family: Arial; background:#f5f7fa; padding:20px; }
+.box { background:white; padding:20px; border-radius:10px; max-width:900px; margin:auto; }
+input, button { padding:10px; margin-top:10px; width:100%; }
+table { width:100%; margin-top:20px; border-collapse: collapse; }
+td, th { border:1px solid #ddd; padding:8px; font-size:12px; }
+</style>
+</head>
+
+<body>
+
+<div class="box">
+  <h2>📊 Analizador de pedidos</h2>
+
+  <input type="file" id="fileInput">
+  <input type="text" id="fechaFiltro" placeholder="Filtrar por fecha (ej: 9/4/2026)">
+  <button onclick="procesar()">Procesar</button>
+
+  <h3>📈 Conteo por usuario</h3>
+  <pre id="conteo"></pre>
+
+  <h3>📋 Mensajes</h3>
+  <table id="tabla">
+    <thead>
+      <tr>
+        <th>Fecha</th>
+        <th>Hora</th>
+        <th>Usuario</th>
+        <th>Mensaje</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<script>
+let mensajes = [];
+
+function parsearChat(texto) {
+  const lineas = texto.split("\n");
+  const regex = /^(\d{1,2}\/\d{1,2}\/\d{4}),\s(.+?)\s-\s(.+?):\s(.+)$/;
+
+  const datos = [];
+
+  for (let linea of lineas) {
+    const match = linea.match(regex);
+    if (match) {
+      const [, fecha, hora, usuario, mensaje] = match;
+      datos.push({ fecha, hora, usuario, mensaje });
+    }
+  }
+  return datos;
+}
+
+function contarPorUsuario(data) {
+  const conteo = {};
+  data.forEach(m => {
+    conteo[m.usuario] = (conteo[m.usuario] || 0) + 1;
+  });
+  return conteo;
+}
+
+function renderTabla(data) {
+  const tbody = document.querySelector("#tabla tbody");
+  tbody.innerHTML = "";
+
+  data.forEach(m => {
+    const row = `<tr>
+      <td>${m.fecha}</td>
+      <td>${m.hora}</td>
+      <td>${m.usuario}</td>
+      <td>${m.mensaje}</td>
+    </tr>`;
+    tbody.innerHTML += row;
+  });
+}
+
+function procesar() {
+  const file = document.getElementById("fileInput").files[0];
+  const fechaFiltro = document.getElementById("fechaFiltro").value;
+
+  if (!file) {
+    alert("Sube un archivo");
+    return;
+  }
+
+  const reader = new FileReader();
+
+  reader.onload = function(e) {
+    mensajes = parsearChat(e.target.result);
+
+    let filtrados = mensajes;
+
+    if (fechaFiltro) {
+      filtrados = mensajes.filter(m => m.fecha === fechaFiltro);
+    }
+
+    const conteo = contarPorUsuario(filtrados);
+
+    document.getElementById("conteo").textContent = JSON.stringify(conteo, null, 2);
+
+    renderTabla(filtrados);
+  };
+
+  reader.readAsText(file);
+}
+</script>
+
+</body>
+</html>
